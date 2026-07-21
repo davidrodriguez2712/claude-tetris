@@ -34,4 +34,4 @@ jobs:
                - Archivos/funciones afectadas (ej. game.js: collide(), tryRotate(), etc.)
                - Approach sugerido para el fix (sin implementarlo)
             No edites el código ni crees PR — solo labels + comment de diagnóstico.
-          claude_args: '--allowed-tools "Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh label list:*)"'
+          claude_args: '--allowed-tools "Read,Grep,Glob,Bash(gh issue view:*),Bash(gh issue edit:*),Bash(gh issue comment:*),Bash(gh label list:*)"'
