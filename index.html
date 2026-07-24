@@ -7,12 +7,27 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <script>
+    (function () {
+      if (localStorage.getItem('tetris-theme') === 'light') {
+        document.body.classList.add('light-theme');
+      }
+    })();
+  </script>
   <div class="wrapper">
     <h1 class="game-title">TETRIS</h1>
     <div class="game-container">
       <canvas id="board" width="300" height="600"></canvas>
 
       <aside class="panel">
+        <div class="panel-section theme-toggle">
+          <span class="label">MODO CLARO</span>
+          <label class="switch">
+            <input type="checkbox" id="theme-toggle" />
+            <span class="slider"></span>
+          </label>
+        </div>
+
         <div class="panel-section">
           <span class="label">SCORE</span>
           <span class="value" id="score">0</span>
