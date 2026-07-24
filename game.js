@@ -28,6 +28,11 @@ const PIECES = [
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
 
+const POWER_UPS = ['bomb', 'lightning', 'dye', 'gravity', 'freeze'];
+const POWER_UP_ICONS = { bomb: '💣', lightning: '⚡', dye: '🎨', gravity: '⬇️', freeze: '❄️' };
+const POWERUP_LINE_INTERVAL = 10;
+const FREEZE_DURATION_MS = 5000;
+
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 const nextCanvas = document.getElementById('next-canvas');
@@ -42,6 +47,7 @@ const restartBtn = document.getElementById('restart-btn');
 const themeToggle = document.getElementById('theme-toggle');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let linesSincePowerUp, pendingPowerUp, freezeEndTime;
 const themeColors = { grid: '#22222e', highlight: 'rgba(255,255,255,0.12)' };
 
 function updateThemeColors() {
@@ -54,10 +60,10 @@ function createBoard() {
   return Array.from({ length: ROWS }, () => new Array(COLS).fill(0));
 }
 
-function randomPiece() {
+function randomPiece(powerUp = null) {
   const type = Math.floor(Math.random() * 7) + 1;
   const shape = PIECES[type].map(row => [...row]);
-  return { type, shape, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0 };
+  return { type, shape, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0, powerUp };
 }
 
 function collide(shape, ox, oy) {
@@ -116,7 +122,54 @@ function clearLines() {
     score += (LINE_SCORES[cleared] || 0) * level;
     level = Math.floor(lines / 10) + 1;
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+    linesSincePowerUp += cleared;
+    if (linesSincePowerUp >= POWERUP_LINE_INTERVAL) {
+      linesSincePowerUp -= POWERUP_LINE_INTERVAL;
+      pendingPowerUp = POWER_UPS[Math.floor(Math.random() * POWER_UPS.length)];
+    }
     updateHUD();
+  }
+}
+
+function powerUpCenter() {
+  const cx = Math.min(COLS - 1, Math.max(0, current.x + Math.floor(current.shape[0].length / 2)));
+  const cy = Math.min(ROWS - 1, Math.max(0, current.y + Math.floor(current.shape.length / 2)));
+  return { cx, cy };
+}
+
+function compactBoard() {
+  for (let c = 0; c < COLS; c++) {
+    const colVals = [];
+    for (let r = 0; r < ROWS; r++) if (board[r][c]) colVals.push(board[r][c]);
+    for (let r = ROWS - 1; r >= 0; r--) board[r][c] = colVals.length ? colVals.pop() : 0;
+  }
+}
+
+function applyPowerUp(type) {
+  const { cx, cy } = powerUpCenter();
+  switch (type) {
+    case 'bomb':
+      for (let r = cy - 1; r <= cy + 1; r++)
+        for (let c = cx - 1; c <= cx + 1; c++)
+          if (r >= 0 && r < ROWS && c >= 0 && c < COLS) board[r][c] = 0;
+      break;
+    case 'lightning':
+      for (let c = 0; c < COLS; c++) board[cy][c] = 0;
+      for (let r = 0; r < ROWS; r++) board[r][cx] = 0;
+      break;
+    case 'dye': {
+      const colorType = current.type;
+      for (let r = 0; r < ROWS; r++)
+        for (let c = 0; c < COLS; c++)
+          if (board[r][c] === colorType) board[r][c] = 0;
+      break;
+    }
+    case 'gravity':
+      compactBoard();
+      break;
+    case 'freeze':
+      freezeEndTime = performance.now() + FREEZE_DURATION_MS;
+      break;
   }
 }
 
@@ -145,13 +198,15 @@ function softDrop() {
 
 function lockPiece() {
   merge();
+  if (current.powerUp) applyPowerUp(current.powerUp);
   clearLines();
   spawn();
 }
 
 function spawn() {
   current = next;
-  next = randomPiece();
+  next = randomPiece(pendingPowerUp);
+  pendingPowerUp = null;
   if (collide(current.shape, current.x, current.y)) {
     endGame();
   }
@@ -174,6 +229,27 @@ function drawBlock(context, x, y, colorIndex, size, alpha) {
   context.fillStyle = themeColors.highlight;
   context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
   context.globalAlpha = 1;
+}
+
+function drawPowerUpIcon(context, x, y, shape, size, icon) {
+  let minR = shape.length, maxR = -1, minC = shape[0].length, maxC = -1;
+  for (let r = 0; r < shape.length; r++)
+    for (let c = 0; c < shape[r].length; c++)
+      if (shape[r][c]) {
+        minR = Math.min(minR, r); maxR = Math.max(maxR, r);
+        minC = Math.min(minC, c); maxC = Math.max(maxC, c);
+      }
+  if (maxR < 0) return;
+  const cx = (x + (minC + maxC + 1) / 2) * size;
+  const cy = (y + (minR + maxR + 1) / 2) * size;
+  context.font = `${size * 0.7}px sans-serif`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  context.lineWidth = 3;
+  context.strokeStyle = '#000';
+  context.fillStyle = '#fff';
+  context.strokeText(icon, cx, cy);
+  context.fillText(icon, cx, cy);
 }
 
 function drawGrid() {
@@ -213,6 +289,9 @@ function draw() {
   for (let r = 0; r < current.shape.length; r++)
     for (let c = 0; c < current.shape[r].length; c++)
       drawBlock(ctx, current.x + c, current.y + r, current.shape[r][c], BLOCK);
+
+  if (current.powerUp)
+    drawPowerUpIcon(ctx, current.x, current.y, current.shape, BLOCK, POWER_UP_ICONS[current.powerUp]);
 }
 
 function drawNext() {
@@ -224,6 +303,9 @@ function drawNext() {
   for (let r = 0; r < shape.length; r++)
     for (let c = 0; c < shape[r].length; c++)
       drawBlock(nextCtx, offX + c, offY + r, shape[r][c], NB);
+
+  if (next.powerUp)
+    drawPowerUpIcon(nextCtx, offX, offY, shape, NB, POWER_UP_ICONS[next.powerUp]);
 }
 
 function endGame() {
@@ -251,13 +333,15 @@ function togglePause() {
 function loop(ts) {
   const dt = ts - lastTime;
   lastTime = ts;
-  dropAccum += dt;
-  if (dropAccum >= dropInterval) {
-    dropAccum = 0;
-    if (!collide(current.shape, current.x, current.y + 1)) {
-      current.y++;
-    } else {
-      lockPiece();
+  if (ts >= freezeEndTime) {
+    dropAccum += dt;
+    if (dropAccum >= dropInterval) {
+      dropAccum = 0;
+      if (!collide(current.shape, current.x, current.y + 1)) {
+        current.y++;
+      } else {
+        lockPiece();
+      }
     }
   }
   draw();
@@ -275,6 +359,9 @@ function init() {
   dropInterval = 1000;
   dropAccum = 0;
   lastTime = performance.now();
+  linesSincePowerUp = 0;
+  pendingPowerUp = null;
+  freezeEndTime = 0;
   updateThemeColors();
   next = randomPiece();
   spawn();
