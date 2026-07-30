@@ -45,9 +45,11 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggle = document.getElementById('theme-toggle');
+const skinSelect = document.getElementById('skin-select');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
 let linesSincePowerUp, pendingPowerUp, freezeEndTime;
+let currentSkin = localStorage.getItem('tetris-skin') || 'retro';
 const themeColors = { grid: '#22222e', highlight: 'rgba(255,255,255,0.12)' };
 
 function updateThemeColors() {
@@ -219,15 +221,96 @@ function updateHUD() {
   levelEl.textContent = level;
 }
 
-function drawBlock(context, x, y, colorIndex, size, alpha) {
-  if (!colorIndex) return;
-  const color = COLORS[colorIndex];
-  context.globalAlpha = alpha ?? 1;
+function shadeColor(hex, percent) {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const adjust = c => {
+    const v = percent >= 0 ? c + (255 - c) * percent : c * (1 + percent);
+    return Math.max(0, Math.min(255, Math.round(v)));
+  };
+  return `rgb(${adjust(r)}, ${adjust(g)}, ${adjust(b)})`;
+}
+
+function roundRectPath(context, x, y, w, h, r) {
+  context.beginPath();
+  context.moveTo(x + r, y);
+  context.arcTo(x + w, y, x + w, y + h, r);
+  context.arcTo(x + w, y + h, x, y + h, r);
+  context.arcTo(x, y + h, x, y, r);
+  context.arcTo(x, y, x + w, y, r);
+  context.closePath();
+}
+
+function drawRetroBlock(context, x, y, color, size) {
   context.fillStyle = color;
   context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
   // highlight
   context.fillStyle = themeColors.highlight;
   context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+}
+
+function drawNeonBlock(context, x, y, color, size) {
+  const px = x * size + 1, py = y * size + 1, s = size - 2;
+  context.shadowBlur = 15;
+  context.shadowColor = color;
+  context.fillStyle = color;
+  context.fillRect(px, py, s, s);
+  context.shadowBlur = 0;
+  context.shadowColor = 'transparent';
+  context.fillStyle = 'rgba(255,255,255,0.3)';
+  context.fillRect(px, py, s, 3);
+}
+
+function drawPastelBlock(context, x, y, color, size) {
+  const px = x * size + 1, py = y * size + 1, s = size - 2;
+  const radius = 4;
+  context.fillStyle = shadeColor(color, 0.45);
+  roundRectPath(context, px, py, s, s, radius);
+  context.fill();
+  context.fillStyle = 'rgba(255,255,255,0.3)';
+  roundRectPath(context, px, py, s, 4, radius);
+  context.fill();
+}
+
+function drawPixelBlock(context, x, y, color, size) {
+  const px = x * size + 1, py = y * size + 1, s = size - 2;
+  context.fillStyle = color;
+  context.fillRect(px, py, s, s);
+  const light = shadeColor(color, 0.22);
+  const dark = shadeColor(color, -0.22);
+  const sub = s / 4;
+  for (let row = 0; row < 4; row++) {
+    for (let col = 0; col < 4; col++) {
+      context.fillStyle = (row + col) % 2 === 0 ? light : dark;
+      context.fillRect(px + col * sub, py + row * sub, sub, sub);
+    }
+  }
+}
+
+function drawBlock(context, x, y, colorIndex, size, alpha) {
+  if (!colorIndex) return;
+  const color = COLORS[colorIndex];
+  context.globalAlpha = alpha ?? 1;
+
+  switch (currentSkin) {
+    case 'neon':
+      drawNeonBlock(context, x, y, color, size);
+      break;
+    case 'pastel':
+      drawPastelBlock(context, x, y, color, size);
+      break;
+    case 'pixel':
+      drawPixelBlock(context, x, y, color, size);
+      break;
+    default:
+      drawRetroBlock(context, x, y, color, size);
+  }
+
+  // canvas shadow state is global/mutable — always reset so it never leaks
+  // into the next draw call (grid lines, other skins, next frame).
+  context.shadowBlur = 0;
+  context.shadowColor = 'transparent';
   context.globalAlpha = 1;
 }
 
@@ -376,6 +459,14 @@ themeToggle.addEventListener('change', () => {
   document.body.classList.toggle('light-theme', themeToggle.checked);
   localStorage.setItem('tetris-theme', themeToggle.checked ? 'light' : 'dark');
   updateThemeColors();
+  draw();
+  drawNext();
+});
+
+skinSelect.value = currentSkin;
+skinSelect.addEventListener('change', () => {
+  currentSkin = skinSelect.value;
+  localStorage.setItem('tetris-skin', currentSkin);
   draw();
   drawNext();
 });
