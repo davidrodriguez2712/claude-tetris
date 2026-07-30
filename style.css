@@ -177,6 +177,22 @@ body {
   transform: translateX(18px);
 }
 
+/* ---- Selector de skin ---- */
+#skin-select {
+  background: var(--kbd-bg);
+  border: 1px solid var(--kbd-border);
+  color: var(--kbd-color);
+  border-radius: 4px;
+  padding: 5px 6px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+#skin-select:focus {
+  outline: 1px solid var(--board-border);
+}
+
 /* ---- Controles ---- */
 .controls ul {
   list-style: none;
